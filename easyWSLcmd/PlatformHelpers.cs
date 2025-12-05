@@ -33,8 +33,9 @@ namespace easyWslCmd
                 await using var inStream = await httpClient.GetStreamAsync(uri);
                 Copy(inStream, destinationPath);
             }
-            catch (System.Net.Http.HttpRequestException e)
+            catch (System.Net.Http.HttpRequestException)
             {
+                // Silently handle HTTP errors
             }
         }
 

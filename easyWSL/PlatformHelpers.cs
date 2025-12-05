@@ -39,8 +39,6 @@ namespace easyWSL
 
         public async Task DownloadFileAsync(Uri uri, IEnumerable<KeyValuePair<string,string>> headers, FileInfo destinationPath)
         {
-            HttpRequestHeaders _headers;
-
             var httpRequestMessage = new HttpRequestMessage
             {
                 Method = HttpMethod.Get,

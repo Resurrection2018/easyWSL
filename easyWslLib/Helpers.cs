@@ -1,6 +1,8 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.IO;
-using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -9,38 +11,55 @@ namespace easyWslLib
 {
     public class Helpers
     {
-        public string GetRequest(string url)
+        private static readonly HttpClient _httpClient = new HttpClient();
+
+        static Helpers()
         {
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-            request.Credentials = CredentialCache.DefaultCredentials;
-            Stream receiveStream = response.GetResponseStream();
-            StreamReader readStream = new StreamReader(receiveStream, Encoding.UTF8);
-            string responseStream = readStream.ReadToEnd();
-            response.Close();
-            readStream.Close();
-            return responseStream;
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "easyWSL/2.0");
+            _httpClient.Timeout = TimeSpan.FromMinutes(5);
         }
-        public string GetRequestWithHeader(string url, string token, string type)
+
+        public async Task<string> GetRequestAsync(string url)
         {
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Headers.Add("Authorization", "Bearer " + token);
-            request.Accept = type;
-            HttpWebResponse response;
             try
             {
-                response = (HttpWebResponse)request.GetResponse();
+                return await _httpClient.GetStringAsync(url);
             }
-            catch(WebException ex)
+            catch (HttpRequestException ex)
             {
-                throw ex;
+                throw new Exception($"HTTP request failed: {ex.Message}", ex);
             }
-            Stream receiveStream = response.GetResponseStream();
-            StreamReader readStream = new StreamReader(receiveStream, Encoding.UTF8);
-            string responseStream = readStream.ReadToEnd();
-            response.Close();
-            readStream.Close();
-            return responseStream;
+        }
+
+        // Synchronous wrapper for backward compatibility
+        public string GetRequest(string url)
+        {
+            return GetRequestAsync(url).GetAwaiter().GetResult();
+        }
+
+        public async Task<string> GetRequestWithHeaderAsync(string url, string token, string acceptType)
+        {
+            try
+            {
+                using var requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                requestMessage.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(acceptType));
+                
+                var response = await _httpClient.SendAsync(requestMessage);
+                response.EnsureSuccessStatusCode();
+                
+                return await response.Content.ReadAsStringAsync();
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new Exception($"HTTP request failed: {ex.Message}", ex);
+            }
+        }
+
+        // Synchronous wrapper for backward compatibility
+        public string GetRequestWithHeader(string url, string token, string type)
+        {
+            return GetRequestWithHeaderAsync(url, token, type).GetAwaiter().GetResult();
         }
 
         public string ComputeSha256Hash(byte[] rawData)
@@ -69,7 +88,7 @@ namespace easyWslLib
             await proc.WaitForExitAsync().ConfigureAwait(false);
         }
 
-        public async Task StartWSLDistroAsync(string distroName)
+        public void StartWSLDistro(string distroName)
         {
             Process proc = new Process();
             proc.StartInfo.UseShellExecute = false;

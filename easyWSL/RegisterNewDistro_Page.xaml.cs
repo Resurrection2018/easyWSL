@@ -86,17 +86,19 @@ namespace easyWSL
             string password = "";
             
 
-            if (distroName == "" || distroName.Contains(" "))
+            var (isValid, error) = InputValidator.ValidateDistroName(distroName);
+            if (!isValid)
             {
-                await showErrorModal();
+                await showErrorModal(error);
                 return;
             }
             if (newUserSwitch.IsOn == true && distroSource == "Supported distro list")
             {
                 userName = userNameTextBox.Text;
-                if (userName == "" || userName.Contains(" "))
+                var (userValid, userError) = InputValidator.ValidateUserName(userName);
+                if (!userValid)
                 {
-                    await showErrorModal();
+                    await showErrorModal(userError);
                     return;
                 }
                 string passwd1 = password1TextBox.Password.ToString();
@@ -147,6 +149,15 @@ namespace easyWSL
                     break;
                 case "Docker Hub":
                     image = dockerImageTextBox.Text;
+                    
+                    // Validate Docker image name
+                    var (imageValid, imageError) = InputValidator.ValidateDockerImage(image);
+                    if (!imageValid)
+                    {
+                        await showErrorModal(imageError);
+                        return;
+                    }
+                    
                     registeringStatusTextBlock.Text = $"Downloading the {distroName} distribution";
                     registerDistroProgressBar.IsIndeterminate = false;
                     registeringStatusTextBlock.Visibility = Visibility.Visible;
@@ -185,31 +196,35 @@ namespace easyWSL
                     break;
             }
 
-            string postInstallCommand = String.Join(
-                "pwconv; ",
-                "grpconv; ",
-                "chmod 0744 /etc/shadow; ",
-                "chmod 0744 /etc/gshadow; ",
-                "chown -R root:root /bin/su; ",
-                "chmod 755 /bin/su; ",
-                "chmod u+s /bin/su; ",
-                "touch /etc/fstab; "
-            );
+            string[] postInstallCommands = new[]
+            {
+                "pwconv",
+                "grpconv",
+                "chmod 0744 /etc/shadow",
+                "chmod 0744 /etc/gshadow",
+                "chown -R root:root /bin/su",
+                "chmod 755 /bin/su",
+                "chmod u+s /bin/su",
+                "touch /etc/fstab"
+            };
+            string postInstallCommand = string.Join("; ", postInstallCommands);
             await helpers.ExecuteCommandInWSLAsync(distroName, postInstallCommand);
 
             if(distroSource == "Supported distro list")
             {
                 ShowProgressBar($"Configuring the {distroName} distrbution");
-                string configureCommand = String.Join(
+                string[] configureCommands = new[]
+                {
                     // apt
-                    "if command -v apt; then apt-get -y update; apt-get -y install sudo bash curl; fi; ",
+                    "if command -v apt; then apt-get -y update; apt-get -y install sudo bash curl; fi",
                     // pacman
-                    "if command -v pacman; then pacman -Syu --noconfirm; pacman -S --noconfirm sudo bash curl; fi; ",
+                    "if command -v pacman; then pacman -Syu --noconfirm; pacman -S --noconfirm sudo bash curl; fi",
                     // apk
-                    "if command -v apk; then apk update; apk add sudo shadow bash curl; fi; ",
+                    "if command -v apk; then apk update; apk add sudo shadow bash curl; fi",
                     // dnf
-                    "if command -v dnf; then dnf -y update; dnf -y install sudo bash passwd curl; fi; "
-                );
+                    "if command -v dnf; then dnf -y update; dnf -y install sudo bash passwd curl; fi"
+                };
+                string configureCommand = string.Join("; ", configureCommands);
                 await helpers.ExecuteCommandInWSLAsync(distroName, configureCommand);
 
                 if (newUserSwitch.IsOn == true)
@@ -217,16 +232,30 @@ namespace easyWSL
 
 
                     await helpers.ExecuteCommandInWSLAsync(distroName, $"useradd -m {userName} -s $(type -p bash)");
-                    await helpers.ExecuteCommandInWSLAsync(distroName, $"echo '{userName}:{password}' | chpasswd");
+                    
+                    // Use secure password file instead of command-line argument
+                    string tempPassFile = null;
+                    try
+                    {
+                        tempPassFile = SecurePasswordHelper.CreateSecurePasswordFile(userName, password);
+                        string wslPath = tempPassFile.Replace("\\", "/").Replace("C:", "/mnt/c");
+                        await helpers.ExecuteCommandInWSLAsync(distroName, $"chpasswd < '{wslPath}'");
+                    }
+                    finally
+                    {
+                        // Always clean up the password file securely
+                        if (tempPassFile != null)
+                            SecurePasswordHelper.SecureDelete(tempPassFile);
+                    }
 
                     if (isAdminSwitch.IsOn == true)
                     {
-                        await helpers.ExecuteCommandInWSLAsync(distroName, $"echo '{userName} ALL=(ALL:ALL) ALL' >> /etc/sudoers; ");
+                        await helpers.ExecuteCommandInWSLAsync(distroName, $"echo '{userName} ALL=(ALL:ALL) ALL' >> /etc/sudoers");
                     }
-
+    
                     await helpers.ExecuteCommandInWSLAsync(distroName, $"echo '[user]' >> /etc/wsl.conf");
                     await helpers.ExecuteCommandInWSLAsync(distroName, $"echo 'default={userName}' >> /etc/wsl.conf");
-
+    
                     if (winHelloSwitch.IsOn == true)
                     {
                         string pamPath = Path.Combine(App.executableLocation, @"dep\pam_wsl_hello.so");
@@ -391,7 +420,7 @@ namespace easyWSL
             }
             else if (result == ContentDialogResult.Primary)
             {
-                helpers.StartWSLDistroAsync(name);
+                helpers.StartWSLDistro(name);
                 this.Frame.Navigate(typeof(ManageDistrosPage));
             }
 
@@ -411,9 +440,25 @@ namespace easyWSL
             ShowProgressBar($"Registering the {distroName} distribution");
 
             var distroStoragePath = Path.Combine(storageDirectory.Path, distroName);
+            
+            // Security: Validate path doesn't escape base directory
+            var (pathValid, pathError) = InputValidator.ValidatePathWithinBase(
+                distroStoragePath,
+                storageDirectory.Path
+            );
+            
+            if (!pathValid)
+            {
+                HideProgressBar();
+                await showErrorModal($"Security error: {pathError}");
+                return;
+            }
+            
             Directory.CreateDirectory(distroStoragePath);
 
             await helpers.ExecuteProcessAsynch("wsl.exe", $"--import {distroName} {distroStoragePath} {tarballPath}");
+            
+            SecurityLogger.LogSecurityEvent("DISTRO_REGISTERED", $"Name={distroName}, Path={distroStoragePath}");
 
             HideProgressBar();
         }
@@ -495,14 +540,14 @@ namespace easyWSL
             this.Frame.Navigate(typeof(ManageDistrosPage));
         }
 
-        private async Task showErrorModal()
+        private async Task showErrorModal(string message = null)
         {
             ContentDialog errorDialog = new ContentDialog();
             errorDialog.XamlRoot = registerDistroProceedButton.XamlRoot;
             errorDialog.Title = "Error";
             errorDialog.CloseButtonText = "Cancel";
             errorDialog.DefaultButton = ContentDialogButton.Close;
-            errorDialog.Content = "There were problems with registering your distribution.";
+            errorDialog.Content = message ?? "There were problems with registering your distribution.";
             await errorDialog.ShowAsync();
         }
     }

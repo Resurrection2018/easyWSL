@@ -49,27 +49,93 @@ Get it, install, and voilà!
 * Windows 10 1607 or later (for WSL1) or Windows 10 1903 (18362) or later
    * Note: you might want to check instructions on how to enable WSL [here](https://docs.microsoft.com/en-us/windows/wsl/install-manual)
 * [Developer Mode enabled](https://docs.microsoft.com/windows/uwp/get-started/enable-your-device-for-development)
-* [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/) (recommended by Microsoft)
+* **[.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) or later** (Required)
+* [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/) (17.8 or later recommended)
 * The following workloads:
    * .NET Desktop Development
+   * Windows App SDK C# Templates
 * Individual components:
-   * Windows 10 SDK (10.0.19041.0)
-* The following extensions:
-   * [System.Text.Json](https://www.nuget.org/packages/System.Text.Json/5.0.2?_src=template)
+   * Windows 10 SDK (10.0.19041.0 or later)
+   * Windows App SDK (automatically installed with workload)
 
- More detailed info, including building on older releases of Visual Studio, can be found 
- [here](https://docs.microsoft.com/en-us/windows/apps/windows-app-sdk/set-up-your-development-environment?tabs=vs-2022-17-1-a%2Cvs-2022-17-1-b)
+More detailed info can be found in the [Windows App SDK documentation](https://docs.microsoft.com/en-us/windows/apps/windows-app-sdk/set-up-your-development-environment)
 
 (Upon opening the repo in Visual Studio, it will prompt you to install any missing workloads and features.)
 
 ### Building
 
-We currently only build using the solution; command line methods of building a VS solution should work as well.
+#### Using Visual Studio
+1. Open `easyWSL.sln` in Visual Studio 2022
+2. Restore NuGet packages (automatic)
+3. Build the solution (F6 or Build → Build Solution)
+4. Run the project (F5 or Debug → Start Debugging)
+
+#### Using Command Line
+```bash
+# Clone the repository
+git clone https://github.com/redcode-labs/easyWSL.git
+cd easyWSL
+
+# Restore NuGet packages
+dotnet restore easyWSL.sln
+
+# Build the solution
+dotnet build easyWSL.sln -c Release
+
+# Run the UI application
+dotnet run --project easyWSL/easyWSL.csproj
+
+# Or run the CLI tool
+cd easyWSLcmd
+dotnet run -- import --name test-distro --image ubuntu:22.04
+```
+
+### Build Configurations
+- **Debug**: Development builds with debug symbols
+- **Release**: Optimized builds for production
+- **Platforms**: x86, x64, ARM64
+
+## Recent Updates
+
+### Version 2.0 (December 2025) - Major Security & Modernization Release
+
+**Framework Modernization**:
+- ✅ Migrated to .NET 8.0 LTS (supported until November 2026)
+- ✅ Updated all NuGet packages to latest stable versions
+- ✅ Removed all deprecated APIs (WebRequest → HttpClient)
+- ✅ Modern Windows App SDK 1.5
+
+**Security Enhancements**:
+- ✅ **Secure password handling** - Passwords never exposed in process arguments
+- ✅ **Path traversal prevention** - Blocks directory escape attacks
+- ✅ **Input validation** - Comprehensive validation of all user inputs
+- ✅ **Security logging** - Complete audit trail at `%LOCALAPPDATA%\easyWSL\security.log`
+- ✅ **Resource limits** - Protection against DoS attacks (20GB max downloads)
+- ✅ **Command injection prevention** - Shell argument escaping
+
+**Bug Fixes**:
+- ✅ Fixed kernel command line configuration loading
+- ✅ Fixed exception stack trace preservation
+- ✅ Fixed async/await issues
+- ✅ Added null reference checks
+- ✅ Fixed string concatenation bugs
+
+**For detailed changelog, see**: `PHASE*_COMPLETION_SUMMARY.md` files
+
+**For security information**, see: [`SECURITY.md`](SECURITY.md)
+
+---
+
+## Security
+
+easyWSL 2.0 includes enterprise-grade security features. For details on our security implementation, vulnerability reporting, and best practices, please see our [Security Policy](SECURITY.md).
+
+---
 
 ## Future plans
 
 ### CLI
 
-We are looking forward to make a CLI compatible with all of our latest features, in order to make our tool usable in scripts.
+A command-line tool (`easyWSLcmd`) is included in this repository for automation and scripting scenarios.
 
-If you're looking into using easyWSL as a CLI, the only current option is to use the older version (easyWSL 1.2), which you can get from the release page [here](https://github.com/redcode-labs/easyWSL/releases/tag/1.2).
+For legacy CLI support, older version (easyWSL 1.2) is available [here](https://github.com/redcode-labs/easyWSL/releases/tag/1.2).

@@ -174,7 +174,7 @@ namespace easyWSL
                 kernelPathTextBox.Text = kernelPath;
             }
             // Kernel commandline
-            if (configParsed.ContainsKey("kernel"))
+            if (configParsed.ContainsKey("kernelCommandLine"))
             {
                 string kernelCmd = configParsed["kernelCommandLine"];
                 kernelCommandLineTextBox.Text = kernelCmd;

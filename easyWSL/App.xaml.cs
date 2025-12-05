@@ -18,20 +18,34 @@ namespace easyWSL
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            var isWSLInstalled = WslSdk.CheckIfWSLInstalled();
-            if (!isWSLInstalled)
+            try
             {
-                m_window = new WelcomeWindow();
-            }
-            else
-            {
-                m_window = new NavigationRoot_Window();
-            }
+                var isWSLInstalled = WslSdk.CheckIfWSLInstalled();
+                if (!isWSLInstalled)
+                {
+                    m_window = new WelcomeWindow();
+                }
+                else
+                {
+                    m_window = new NavigationRoot_Window();
+                }
 
-            m_window.Activate();
-            m_window.Title = "easyWSL";
-            m_windowhandle = User32.GetActiveWindow();
-            User32.ShowWindow(m_windowhandle, User32.WindowShowStyle.SW_MAXIMIZE);
+                m_window.Activate();
+                m_window.Title = "easyWSL";
+                m_windowhandle = User32.GetActiveWindow();
+                User32.ShowWindow(m_windowhandle, User32.WindowShowStyle.SW_MAXIMIZE);
+            }
+            catch (Exception ex)
+            {
+                // Fallback: show welcome window on any error
+                System.Diagnostics.Debug.WriteLine($"Startup error: {ex.Message}\n{ex.StackTrace}");
+                if (m_window == null)
+                {
+                    m_window = new WelcomeWindow();
+                    m_window.Activate();
+                    m_window.Title = "easyWSL - Startup Error";
+                }
+            }
         }
 
         private Window m_window;

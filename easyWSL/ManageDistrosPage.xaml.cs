@@ -98,7 +98,7 @@ namespace easyWSL
 
         private async void startDistroButton_Click(object sender, RoutedEventArgs e)
         {
-            helpers.StartWSLDistroAsync(selectedDistroName);
+            helpers.StartWSLDistro(selectedDistroName);
         }
 
         private async void stopDistroButton_Click(object sender, RoutedEventArgs e)

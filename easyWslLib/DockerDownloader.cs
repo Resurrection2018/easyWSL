@@ -14,6 +14,10 @@ namespace easyWslLib
 
     public class DockerDownloader
     {
+        private const long MAX_LAYER_SIZE = 5L * 1024 * 1024 * 1024; // 5 GB per layer
+        private const long MAX_TOTAL_SIZE = 20L * 1024 * 1024 * 1024; // 20 GB total
+        private const int MAX_LAYERS = 100; // Maximum number of layers
+        
         private Helpers helpers = new();
 
         private List<string> layersPaths = new();
@@ -28,14 +32,14 @@ namespace easyWslLib
         }
 
 
-        public class autorizationResponse
+        public class AuthorizationResponse
         {
-            public string token { get; set; }
-            public string access_token { get; set; }
+            public required string Token { get; set; }
+            public required string AccessToken { get; set; }
 
-            public int expires_in { get; set; }
+            public int ExpiresIn { get; set; }
 
-            public string issued_at { get; set; }
+            public required string IssuedAt { get; set; }
 
         }
 
@@ -92,20 +96,32 @@ namespace easyWslLib
                 {
                     throw (new DockerException());
                 }
-                string imgage = imageArray[0];
+                string image = imageArray[0];
                 tag = imageArray[1];
-                repository = $"library/{imgage}";
+                repository = $"library/{image}";
             }
 
-            var autorizationResponse = JsonSerializer.Deserialize<autorizationResponse>(helpers.GetRequest($"{authorizationUrl}?service={registryUrl}&scope=repository:{repository}:pull"));
+            var authJson = helpers.GetRequest($"{authorizationUrl}?service={registryUrl}&scope=repository:{repository}:pull");
+            var authorizationResponse = JsonSerializer.Deserialize<AuthorizationResponse>(authJson);
+
+            if (authorizationResponse == null || string.IsNullOrEmpty(authorizationResponse.Token))
+            {
+                throw new DockerException();
+            }
+
             string layersResponse;
             try
             {
-                layersResponse = helpers.GetRequestWithHeader($"https://{registry}/v2/{repository}/manifests/{tag}", autorizationResponse.token, "application/vnd.docker.distribution.manifest.v2+json");
+                layersResponse = helpers.GetRequestWithHeader($"https://{registry}/v2/{repository}/manifests/{tag}", authorizationResponse.Token, "application/vnd.docker.distribution.manifest.v2+json");
+                
+                if (string.IsNullOrEmpty(layersResponse))
+                {
+                    throw new DockerException();
+                }
             }
-            catch (WebException ex)
+            catch (WebException)
             {
-                throw (new DockerException());
+                throw new DockerException();
             }
 
             MatchCollection layersRegex = Regex.Matches(layersResponse, @"sha256:\w{64}");
@@ -113,8 +129,48 @@ namespace easyWslLib
             layersList.RemoveAt(0);
 
             MatchCollection layersSizeRegex = Regex.Matches(layersResponse, @"""size"": \d*");
-            var layersSizeList = layersSizeRegex.Cast<Match>().Select(match => Convert.ToInt32(match.Value.Remove(0, 8))).ToList();
+            var layersSizeList = layersSizeRegex.Cast<Match>().Select(match => Convert.ToInt64(match.Value.Remove(0, 8))).ToList();
 
+            // Security: Validate layer count
+            if (layersList.Count > MAX_LAYERS)
+            {
+                SecurityLogger.LogSecurityEvent(
+                    "DOCKER_DOWNLOAD_BLOCKED",
+                    $"Too many layers: {layersList.Count} (max {MAX_LAYERS})",
+                    isSuccess: false
+                );
+                throw new DockerException();
+            }
+            
+            // Security: Validate total download size
+            long totalSize = layersSizeList.Sum();
+            if (totalSize > MAX_TOTAL_SIZE)
+            {
+                long totalGB = totalSize / 1024 / 1024 / 1024;
+                long maxGB = MAX_TOTAL_SIZE / 1024 / 1024 / 1024;
+                SecurityLogger.LogSecurityEvent(
+                    "DOCKER_DOWNLOAD_BLOCKED",
+                    $"Image too large: {totalGB} GB (max {maxGB} GB)",
+                    isSuccess: false
+                );
+                throw new DockerException();
+            }
+            
+            // Security: Validate individual layer sizes
+            for (int i = 0; i < layersSizeList.Count; i++)
+            {
+                if (layersSizeList[i] > MAX_LAYER_SIZE)
+                {
+                    long layerGB = layersSizeList[i] / 1024 / 1024 / 1024;
+                    long maxGB = MAX_LAYER_SIZE / 1024 / 1024 / 1024;
+                    SecurityLogger.LogSecurityEvent(
+                        "DOCKER_DOWNLOAD_BLOCKED",
+                        $"Layer {i+1} too large: {layerGB} GB (max {maxGB} GB)",
+                        isSuccess: false
+                    );
+                    throw new DockerException();
+                }
+            }
 
             Trace.WriteLine(tmpDirectory);
             Directory.CreateDirectory(tmpDirectory);
@@ -124,7 +180,13 @@ namespace easyWslLib
             {
                 layersCount++;
 
-                autorizationResponse = JsonSerializer.Deserialize<autorizationResponse>(helpers.GetRequest($"{authorizationUrl}?service={registryUrl}&scope=repository:{repository}:pull"));
+                authJson = helpers.GetRequest($"{authorizationUrl}?service={registryUrl}&scope=repository:{repository}:pull");
+                authorizationResponse = JsonSerializer.Deserialize<AuthorizationResponse>(authJson);
+                
+                if (authorizationResponse == null || string.IsNullOrEmpty(authorizationResponse.Token))
+                {
+                    throw new DockerException();
+                }
 
                 string layerName = $"layer{layersCount}.tar.bz";
                 string layerPath = $"{tmpDirectory}\\{layerName}";
@@ -133,7 +195,7 @@ namespace easyWslLib
 
                 var headers = new KeyValuePair<string, string>[]
                 {
-                    new KeyValuePair<string, string>(HttpRequestHeader.Authorization.ToString(), $"Bearer {autorizationResponse.token}"),
+                    new KeyValuePair<string, string>(HttpRequestHeader.Authorization.ToString(), $"Bearer {authorizationResponse.Token}"),
                     new KeyValuePair<string, string>(HttpRequestHeader.Accept.ToString(), "application/vnd.docker.distribution.manifest.v2+json"),
                 };
                 await platformHelpers.DownloadFileAsync(new Uri($"https://{registry}/v2/{repository}/blobs/{layer}"), headers, 

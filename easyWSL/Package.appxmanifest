@@ -45,6 +45,7 @@
   </Applications>
 
   <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
     <iot:Capability Name="systemManagement"/>
     <Capability Name="internetClient"/>
   </Capabilities>

@@ -18,31 +18,32 @@ import.Add(imageName);
 import.Add(outputPath);
 rootCommand.AddCommand(import);
 
-
-
 import.SetHandler(async (name, image, output) =>
 {
     if (string.IsNullOrWhiteSpace(name))
     {
-        throw new ArgumentException("missing required parameter", nameof(name));
+        Console.WriteLine("Error: Distribution name is required");
+        return;
     }
 
     if (string.IsNullOrWhiteSpace(image))
     {
-        throw new ArgumentException("missing required parameter", nameof(image));
+        Console.WriteLine("Error: Docker image is required");
+        return;
     }
+    
     var tempPath = Path.Combine(Path.GetTempPath(), "easyWSL");
     var downloader = new DockerDownloader(tempPath, new PlatformHelpers());
 
     output = output.CreateSubdirectory(name);
 
-
-    Console.WriteLine($"Downloading {image}");
+    Console.WriteLine($"Downloading {image}...");
     await downloader.DownloadImage(image);
-    Console.WriteLine("Combining layers");
+    Console.WriteLine("Combining layers...");
     await downloader.CombineLayers();
-    Console.WriteLine("Registering distro");
-    Process.Start("wsl.exe", new[] { $"--import", name, output.FullName, Path.Combine(tempPath, "install.tar.bz") }).WaitForExit();
+    Console.WriteLine("Registering distro...");
+    Process.Start("wsl.exe", new[] { "--import", name, output.FullName, Path.Combine(tempPath, "install.tar.bz") })?.WaitForExit();
+    Console.WriteLine($"Successfully created {name}!");
 }, distroName, imageName, outputPath);
 
 return await rootCommand.InvokeAsync(args);

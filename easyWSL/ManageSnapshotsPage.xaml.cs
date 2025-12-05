@@ -56,10 +56,10 @@ namespace easyWSL
 
             HideProgressBar();
 
-            ContentDialog succedDialog = new ContentDialog();
-            succedDialog.Title = "Succesfuly created snapshot";
-            succedDialog.CloseButtonText = "Cancel";
-            succedDialog.DefaultButton = ContentDialogButton.Close;
+            ContentDialog successDialog = new ContentDialog();
+            successDialog.Title = "Successfully created snapshot";
+            successDialog.CloseButtonText = "Cancel";
+            successDialog.DefaultButton = ContentDialogButton.Close;
             FillSnapshotsListView();
         }
 
@@ -96,7 +96,7 @@ namespace easyWSL
             {
                 Directory.CreateDirectory(snapshotsStoragePath);
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 await showErrorModal();
             }
@@ -169,9 +169,10 @@ namespace easyWSL
             {
                 string name = distroNameTextBox.Text;
 
-                if (name == "" || name.Contains(" "))
+                var (isValid, error) = InputValidator.ValidateDistroName(name);
+                if (!isValid)
                 {
-                    await showErrorModal();
+                    await showErrorModal(error);
                     return;
                 }
                 else
@@ -203,7 +204,7 @@ namespace easyWSL
 
             if (result == ContentDialogResult.Primary)
             {
-                helpers.StartWSLDistroAsync(name);
+                helpers.StartWSLDistro(name);
             }
         }
 
@@ -213,14 +214,14 @@ namespace easyWSL
             string path = Path.Combine(storageDirectory.Path, "snapshots", distro);
             Process.Start("explorer.exe", path);
         }
-        private async Task showErrorModal()
+        private async Task showErrorModal(string message = null)
         {
             ContentDialog errorDialog = new ContentDialog();
             errorDialog.XamlRoot = registerDistroFromSnapshotButton.XamlRoot;
             errorDialog.Title = "Error";
             errorDialog.CloseButtonText = "Cancel";
             errorDialog.DefaultButton = ContentDialogButton.Close;
-            errorDialog.Content = "There were problems with registering your distribution.";
+            errorDialog.Content = message ?? "There were problems with registering your distribution.";
             await errorDialog.ShowAsync();
         }
     }
